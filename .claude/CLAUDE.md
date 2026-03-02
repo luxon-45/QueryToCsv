@@ -1,5 +1,9 @@
 # QueryToCsv Project Rules
 
+## Language
+
+- This is a public repository. Use English as the primary language for all user-facing strings, comments, documentation, and commit messages.
+
 ## Versioning
 
 ### When to Bump

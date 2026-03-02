@@ -12,26 +12,24 @@ public static partial class QueryExecutor
 {
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
-    [GeneratedRegex(@"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|MERGE|GRANT|REVOKE|DENY)\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|MERGE|GRANT|REVOKE|DENY|BULK)\b", RegexOptions.IgnoreCase)]
     private static partial Regex ProhibitedKeywordsRegex();
 
     [GeneratedRegex(@"--[^\r\n]*|/\*[\s\S]*?\*/|'(?:[^']|'')*'", RegexOptions.None)]
     private static partial Regex CommentsAndStringsRegex();
 
-    public static int Execute(AppSettings settings, string sqlFilePath, bool includeHeader, Encoding csvEncoding)
+    public static int Execute(AppSettings settings, string sql, string? baseName, bool includeHeader, Encoding csvEncoding)
     {
-        var fileName = Path.GetFileName(sqlFilePath);
-        var sqlEncoding = Encoding.GetEncoding(settings.SqlFileEncoding);
-        var sql = File.ReadAllText(sqlFilePath, sqlEncoding);
+        var label = baseName ?? "Direct Input";
 
         if (!IsSelectOnly(sql))
         {
-            Logger.Error($"Rejected: non-SELECT statement in {fileName}");
+            Logger.Error($"Rejected: non-SELECT statement in {label}");
             Console.Error.WriteLine("Error: Only SELECT statements are allowed.");
             return 1;
         }
 
-        var outputPath = BuildOutputPath(settings, sqlFilePath);
+        var outputPath = BuildOutputPath(settings, baseName);
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
 
         try
@@ -44,7 +42,7 @@ public static partial class QueryExecutor
             using var command = new SqlCommand(sql, connection);
             command.CommandTimeout = settings.QueryTimeout;
 
-            Logger.Info($"Executing: {fileName}");
+            Logger.Info($"Executing: {label}");
             Console.WriteLine("Executing query...");
             using var reader = command.ExecuteReader();
 
@@ -77,19 +75,20 @@ public static partial class QueryExecutor
         return !ProhibitedKeywordsRegex().IsMatch(stripped);
     }
 
-    private static string BuildOutputPath(AppSettings settings, string sqlFilePath)
+    private static string BuildOutputPath(AppSettings settings, string? baseName)
     {
-        var baseName = Path.GetFileNameWithoutExtension(sqlFilePath);
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
         var outputDir = settings.OutputFolder;
 
-        var candidate = Path.Combine(outputDir, $"{baseName}_{timestamp}.csv");
+        var prefix = string.IsNullOrEmpty(baseName) ? timestamp : $"{baseName}_{timestamp}";
+
+        var candidate = Path.Combine(outputDir, $"{prefix}.csv");
         if (!File.Exists(candidate))
             return candidate;
 
         for (var i = 2; ; i++)
         {
-            candidate = Path.Combine(outputDir, $"{baseName}_{timestamp}_{i}.csv");
+            candidate = Path.Combine(outputDir, $"{prefix}_{i}.csv");
             if (!File.Exists(candidate))
                 return candidate;
         }

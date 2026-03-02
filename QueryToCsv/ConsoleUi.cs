@@ -7,6 +7,7 @@ public static class ConsoleUi
     public static int SelectQuery(string[] fileNames)
     {
         Console.WriteLine("=== Select a query ===");
+        Console.WriteLine("0. Enter query directly");
         for (var i = 0; i < fileNames.Length; i++)
             Console.WriteLine($"{i + 1}. {fileNames[i]}");
         Console.WriteLine();
@@ -17,9 +18,35 @@ public static class ConsoleUi
             var input = Console.ReadLine();
             if (input is null) Environment.Exit(1);
 
-            if (int.TryParse(input, out var num) && num >= 1 && num <= fileNames.Length)
+            if (!int.TryParse(input, out var num))
+                continue;
+
+            if (num == 0)
+                return -1;
+
+            if (num >= 1 && num <= fileNames.Length)
                 return num - 1;
         }
+    }
+
+    public static string InputQuery()
+    {
+        Console.WriteLine("Enter SQL query (end with Ctrl+Z):");
+        var lines = new List<string>();
+        while (true)
+        {
+            Console.Write("  > ");
+            var line = Console.ReadLine();
+            if (line is null) break;
+            lines.Add(line);
+        }
+        var sql = string.Join(Environment.NewLine, lines);
+        if (string.IsNullOrWhiteSpace(sql))
+        {
+            Console.Error.WriteLine("Error: No query entered.");
+            Environment.Exit(1);
+        }
+        return sql;
     }
 
     public static bool AskIncludeHeader()

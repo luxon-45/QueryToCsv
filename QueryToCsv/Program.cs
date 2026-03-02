@@ -40,16 +40,27 @@ try
     var sqlFiles = Directory.GetFiles(settings.QueryFolder, "*.sql");
     Array.Sort(sqlFiles, (a, b) => string.Compare(Path.GetFileName(a), Path.GetFileName(b), StringComparison.OrdinalIgnoreCase));
 
-    if (sqlFiles.Length == 0)
-    {
-        Console.Error.WriteLine("No query files found.");
-        logger.Error("Application finished (exit code: 1)");
-        return 1;
-    }
-
     var fileNames = sqlFiles.Select(Path.GetFileName).ToArray()!;
     var selectedIndex = ConsoleUi.SelectQuery(fileNames!);
-    logger.Info($"Query selected: {fileNames[selectedIndex]}");
+
+    string sql;
+    string? baseName;
+
+    if (selectedIndex == -1)
+    {
+        Console.WriteLine();
+        sql = ConsoleUi.InputQuery();
+        baseName = null;
+        logger.Info("Query selected: [Direct Input]");
+    }
+    else
+    {
+        var sqlFilePath = sqlFiles[selectedIndex];
+        var sqlEncoding = Encoding.GetEncoding(settings.SqlFileEncoding);
+        sql = File.ReadAllText(sqlFilePath, sqlEncoding);
+        baseName = Path.GetFileNameWithoutExtension(sqlFilePath);
+        logger.Info($"Query selected: {fileNames[selectedIndex]}");
+    }
     Console.WriteLine();
 
     var includeHeader = ConsoleUi.AskIncludeHeader();
@@ -59,7 +70,7 @@ try
     logger.Info($"Header: {(includeHeader ? "yes" : "no")}, Encoding: {csvEncoding.EncodingName}");
     Console.WriteLine();
 
-    var exitCode = QueryExecutor.Execute(settings, sqlFiles[selectedIndex], includeHeader, csvEncoding);
+    var exitCode = QueryExecutor.Execute(settings, sql, baseName, includeHeader, csvEncoding);
 
     if (exitCode == 0)
         logger.Info("Application finished (exit code: 0)");

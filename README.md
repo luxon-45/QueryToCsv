@@ -4,7 +4,7 @@ A CLI tool that connects to Microsoft SQL Server, executes `.sql` files, and exp
 
 ## Features
 
-- Interactive query selection from a folder of `.sql` files
+- Interactive query selection from a folder of `.sql` files, or direct SQL input from the console
 - Streaming execution via `SqlDataReader` (constant memory usage regardless of result size)
 - RFC 4180 compliant CSV output (powered by CsvHelper)
 - Configurable delimiter, null representation, newline, and date format
@@ -94,10 +94,13 @@ The application exits immediately after opening the target. If the target does n
 
 ## Usage Example
 
+### File Selection Mode
+
 ```
 === QueryToCsv ===
 
 === Select a query ===
+0. Enter query directly
 1. sales_report.sql
 2. user_list.sql
 
@@ -119,6 +122,27 @@ Writing CSV...
 
 Done: C:\Users\you\AppData\Local\Programs\QueryToCsv\output\sales_report_20260302_153045.csv
 Rows: 1,234
+```
+
+### Direct Input Mode
+
+Select `0` to enter SQL directly from the console. End the input with Ctrl+Z.
+
+```
+Enter number: 0
+
+Enter SQL query (end with Ctrl+Z):
+  > SELECT TOP 10
+  > *
+  > FROM Users
+  > ^Z
+
+Include header row? (y/n): y
+
+...
+
+Done: C:\Users\you\AppData\Local\Programs\QueryToCsv\output\20260302_153045.csv
+Rows: 10
 ```
 
 ## Configuration Reference
@@ -169,6 +193,12 @@ Output files are named `{query}_{timestamp}.csv`:
 
 ```
 sales_report_20260302_153045.csv
+```
+
+For direct input mode, the query name is omitted and the file is named `{timestamp}.csv`:
+
+```
+20260302_153045.csv
 ```
 
 If a file with the same name already exists, a suffix is appended: `_2`, `_3`, etc.
