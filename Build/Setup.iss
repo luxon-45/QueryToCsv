@@ -7,7 +7,7 @@
 AppId={{2756B9BF-C9B9-4C77-915D-1D10F9C31F50}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-DefaultDirName={autopf}\{#MyAppName}
+DefaultDirName={userpf}\{#MyAppName}
 DisableProgramGroupPage=yes
 ChangesEnvironment=yes
 OutputDir=Installer
@@ -16,7 +16,7 @@ Compression=lzma
 SolidCompression=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-PrivilegesRequired=admin
+PrivilegesRequired=lowest
 
 [Tasks]
 Name: "addtopath"; Description: "Add to PATH environment variable"; GroupDescription: "Additional options:"
@@ -33,7 +33,7 @@ Name: "{app}\queries"
 Name: "{app}\output"
 
 [Registry]
-Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; \
+Root: HKCU; Subkey: "Environment"; \
     ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; \
     Check: NeedsAddPath('{app}'); Tasks: addtopath
 
@@ -42,8 +42,8 @@ function NeedsAddPath(Param: string): Boolean;
 var
   OrigPath: string;
 begin
-  if not RegQueryStringValue(HKEY_LOCAL_MACHINE,
-    'SYSTEM\CurrentControlSet\Control\Session Manager\Environment',
+  if not RegQueryStringValue(HKEY_CURRENT_USER,
+    'Environment',
     'Path', OrigPath)
   then begin
     Result := True;
@@ -59,8 +59,8 @@ var
   SearchStr: string;
   P: Integer;
 begin
-  if not RegQueryStringValue(HKEY_LOCAL_MACHINE,
-    'SYSTEM\CurrentControlSet\Control\Session Manager\Environment',
+  if not RegQueryStringValue(HKEY_CURRENT_USER,
+    'Environment',
     'Path', OrigPath)
   then
     exit;
@@ -79,8 +79,8 @@ begin
   if (Length(NewPath) > 0) and (NewPath[Length(NewPath)] = ';') then
     NewPath := Copy(NewPath, 1, Length(NewPath) - 1);
 
-  RegWriteStringValue(HKEY_LOCAL_MACHINE,
-    'SYSTEM\CurrentControlSet\Control\Session Manager\Environment',
+  RegWriteStringValue(HKEY_CURRENT_USER,
+    'Environment',
     'Path', NewPath);
 end;
 
