@@ -1,0 +1,44 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+
+# Build script outputs
+Build/QueryToCsv/
+Build/publish_temp/
+Build/Installer/
+
+# User settings
+*.user
+*.suo
+*.userprefs
+*.DotSettings.user
+
+# appsettings (contains connection strings)
+appsettings.json
+
+# CSV output
+output/
+
+# NuGet
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+
+# Visual Studio
+.vs/
+*.rsuser
+launchSettings.json
+
+# Rider
+.idea/
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Plans
+plans/

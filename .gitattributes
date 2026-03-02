@@ -1,0 +1,23 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# C# sources
+*.cs text diff=csharp
+*.csproj text
+*.sln text eol=crlf
+
+# Scripts
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.iss text eol=crlf
+
+# Config
+*.json text
+*.yaml text
+*.yml text
+
+# Documentation
+*.md text
+
+# SQL
+*.sql text
