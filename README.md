@@ -20,9 +20,18 @@ A CLI tool that connects to Microsoft SQL Server, executes `.sql` files, and exp
 - Microsoft SQL Server (any supported version)
 - .NET 10.0 SDK (for building from source)
 
+## Download
+
+Pre-built binaries are available on the [Releases](https://github.com/luxon-45/QueryToCsv/releases/latest) page.
+
+| File | Description |
+|------|-------------|
+| `QueryToCsv-Setup-*.exe` | Installer (creates folders, optional PATH registration) |
+| `QueryToCsv.exe` | Standalone executable |
+
 ## Getting Started
 
-### 1. Build
+### 1. Build (from source)
 
 Run `Build/Menu.bat` and select **Build** from the menu. This produces a self-contained executable in `Build/QueryToCsv/`.
 
