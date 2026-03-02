@@ -79,6 +79,19 @@ Place `.sql` files in the `queries/` folder (or whichever folder `QueryFolder` p
 QueryToCsv.exe
 ```
 
+### Open Folders / Config
+
+The `--open` option opens folders or files directly from the command line, useful when the install directory is not easily accessible (e.g., `%LOCALAPPDATA%\Programs\QueryToCsv`).
+
+```
+QueryToCsv --open queries   # Open queries folder in Explorer
+QueryToCsv --open output    # Open output folder in Explorer
+QueryToCsv --open config    # Open appsettings.json in default editor
+QueryToCsv --open log       # Open logs folder in Explorer
+```
+
+The application exits immediately after opening the target. If the target does not exist, an error message is displayed (exit code 1).
+
 ## Usage Example
 
 ```
