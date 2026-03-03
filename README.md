@@ -49,13 +49,18 @@ Copy `appsettings.sample.json` to `appsettings.json` in the same directory as th
 copy appsettings.sample.json appsettings.json
 ```
 
-#### Connection String
+#### Connection Strings
+
+Define one or more named connections in the `Connections` array. At startup, you choose which connection to use (or it is selected automatically if only one is defined).
 
 **SQL Server Authentication** (username and password):
 
 ```json
 {
-  "ConnectionString": "Server=myserver;Database=mydb;User Id=myuser;Password=mypassword;TrustServerCertificate=True;"
+  "Connections": [
+    { "Name": "Dev Server", "ConnectionString": "Server=192.168.1.10;Database=SalesDB;User Id=myuser;Password=mypassword;TrustServerCertificate=True;" },
+    { "Name": "Prod Server", "ConnectionString": "Server=sql-prod.local;Database=OrderDB;User Id=myuser;Password=mypassword;TrustServerCertificate=True;" }
+  ]
 }
 ```
 
@@ -63,7 +68,9 @@ copy appsettings.sample.json appsettings.json
 
 ```json
 {
-  "ConnectionString": "Server=myserver;Database=mydb;Integrated Security=True;TrustServerCertificate=True;"
+  "Connections": [
+    { "Name": "Local", "ConnectionString": "Server=myserver;Database=mydb;Integrated Security=True;TrustServerCertificate=True;" }
+  ]
 }
 ```
 
@@ -79,15 +86,29 @@ Place `.sql` files in the `queries/` folder (or whichever folder `QueryFolder` p
 QueryToCsv.exe
 ```
 
+### Cancelling
+
+To exit the application at any time, press **Ctrl+C**.
+
+At any input prompt, **Ctrl+Z** followed by Enter also exits (exit code 1). Exception: in direct SQL input mode, Ctrl+Z ends the SQL entry and proceeds with execution instead of quitting.
+
+### Help
+
+```
+QueryToCsv -h
+QueryToCsv --help
+```
+
 ### Open Folders / Config
 
 The `--open` option opens folders or files directly from the command line, useful when the install directory is not easily accessible (e.g., `%LOCALAPPDATA%\Programs\QueryToCsv`).
 
 ```
-QueryToCsv --open queries   # Open queries folder in Explorer
-QueryToCsv --open output    # Open output folder in Explorer
-QueryToCsv --open config    # Open appsettings.json in default editor
-QueryToCsv --open log       # Open logs folder in Explorer
+QueryToCsv --open queries              # Open queries folder in Explorer
+QueryToCsv --open output               # Open output folder in Explorer
+QueryToCsv --open config               # Open appsettings.json in default editor
+QueryToCsv --open log                  # Open logs folder in Explorer
+QueryToCsv --open "C:\path\to\file.csv"  # Open a specific file with its default app
 ```
 
 The application exits immediately after opening the target. If the target does not exist, an error message is displayed (exit code 1).
@@ -98,6 +119,12 @@ The application exits immediately after opening the target. If the target does n
 
 ```
 === QueryToCsv ===
+
+=== Select connection ===
+1. Dev Server (192.168.1.10 - SalesDB)
+2. Prod Server (sql-prod.local - OrderDB)
+
+Enter number: 1
 
 === Select a query ===
 0. Enter query directly
@@ -129,6 +156,8 @@ Rows: 1,234
 Select `0` to enter SQL directly from the console. End the input with Ctrl+Z.
 
 ```
+Enter number: 1
+
 Enter number: 0
 
 Enter SQL query (end with Ctrl+Z):
@@ -151,7 +180,9 @@ All settings are in `appsettings.json`.
 
 | Key | Type | Required | Default | Description |
 |-----|------|----------|---------|-------------|
-| `ConnectionString` | string | Yes | - | SQL Server connection string |
+| `Connections[]` | array | Yes | - | Array of named connection entries |
+| `Connections[].Name` | string | Yes | - | Display name shown in the selection menu |
+| `Connections[].ConnectionString` | string | Yes | - | SQL Server connection string |
 | `QueryFolder` | string | Yes | - | Folder containing `.sql` files |
 | `OutputFolder` | string | Yes | - | Folder for CSV output |
 | `QueryTimeout` | int | No | `30` | Query timeout in seconds (must be > 0) |
@@ -170,7 +201,10 @@ Relative paths in `QueryFolder` and `OutputFolder` are resolved relative to the 
 
 ```json
 {
-  "ConnectionString": "Server=localhost;Database=SalesDB;Integrated Security=True;TrustServerCertificate=True;",
+  "Connections": [
+    { "Name": "Dev Server", "ConnectionString": "Server=192.168.1.10;Database=SalesDB;User Id=myuser;Password=mypassword;TrustServerCertificate=True;" },
+    { "Name": "Prod Server", "ConnectionString": "Server=sql-prod.local;Database=OrderDB;Integrated Security=True;TrustServerCertificate=True;" }
+  ],
   "QueryFolder": "./queries",
   "OutputFolder": "./output",
   "QueryTimeout": 60,

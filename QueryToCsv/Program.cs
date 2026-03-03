@@ -6,7 +6,10 @@ using NLog.Config;
 using NLog.Targets;
 using QueryToCsv;
 
-// --open <target> : フォルダ/ファイルを開いて即終了
+if (args.Length >= 1 && (args[0] == "-h" || args[0] == "--help"))
+    return PrintHelp();
+
+// --open <target>: open a folder or file and exit
 if (args.Length >= 2 && args[0] == "--open")
     return HandleOpen(args[1]);
 
@@ -36,6 +39,11 @@ try
         logger.Error("Application finished (exit code: 1)");
         return 1;
     }
+
+    var connectionIndex = ConsoleUi.SelectConnection(settings.Connections);
+    var connectionString = settings.Connections[connectionIndex].ConnectionString;
+    logger.Info($"Connection selected: {settings.Connections[connectionIndex].Name}");
+    Console.WriteLine();
 
     var sqlFiles = Directory.GetFiles(settings.QueryFolder, "*.sql");
     Array.Sort(sqlFiles, (a, b) => string.Compare(Path.GetFileName(a), Path.GetFileName(b), StringComparison.OrdinalIgnoreCase));
@@ -70,7 +78,7 @@ try
     logger.Info($"Header: {(includeHeader ? "yes" : "no")}, Encoding: {csvEncoding.EncodingName}");
     Console.WriteLine();
 
-    var exitCode = QueryExecutor.Execute(settings, sql, baseName, includeHeader, csvEncoding);
+    var exitCode = QueryExecutor.Execute(settings, connectionString, sql, baseName, includeHeader, csvEncoding);
 
     if (exitCode == 0)
         logger.Info("Application finished (exit code: 0)");
@@ -81,13 +89,36 @@ try
 }
 catch (Exception ex)
 {
-    logger.Error(ex, ex.Message);
+    logger.Error(ex, "Unhandled exception");
     logger.Error("Application finished (exit code: 1)");
     return 1;
 }
 finally
 {
     LogManager.Shutdown();
+}
+
+static int PrintHelp()
+{
+    var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+    Console.WriteLine($"QueryToCsv v{version}");
+    Console.WriteLine();
+    Console.WriteLine("USAGE");
+    Console.WriteLine("  QueryToCsv                      Run interactively");
+    Console.WriteLine("  QueryToCsv --open <target>      Open a folder or file and exit");
+    Console.WriteLine("  QueryToCsv -h | --help          Show this help");
+    Console.WriteLine();
+    Console.WriteLine("--open TARGETS");
+    Console.WriteLine("  queries       Open the queries folder in Explorer");
+    Console.WriteLine("  output        Open the output folder in Explorer");
+    Console.WriteLine("  config        Open appsettings.json in default editor");
+    Console.WriteLine("  log           Open the logs folder in Explorer");
+    Console.WriteLine("  <file path>   Open a specific file with its default app");
+    Console.WriteLine();
+    Console.WriteLine("CANCELLING");
+    Console.WriteLine("  Ctrl+C        Exit at any time");
+    Console.WriteLine("  Ctrl+Z+Enter  Exit at any input prompt");
+    return 0;
 }
 
 static int HandleOpen(string target)
@@ -109,6 +140,14 @@ static int HandleOpen(string target)
             path = target.ToLowerInvariant() == "queries"
                 ? settings.QueryFolder
                 : settings.OutputFolder;
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                var key = target.ToLowerInvariant() == "queries" ? "QueryFolder" : "OutputFolder";
+                Console.Error.WriteLine($"Error: {key} is not configured in appsettings.json.");
+                return 1;
+            }
+
             isFile = false;
             break;
         }
@@ -121,8 +160,9 @@ static int HandleOpen(string target)
             isFile = false;
             break;
         default:
-            Console.Error.WriteLine($"Error: Unknown target \"{target}\". Use: queries, output, config, log");
-            return 1;
+            path = target;
+            isFile = true;
+            break;
     }
 
     if (isFile)
@@ -138,7 +178,10 @@ static int HandleOpen(string target)
     {
         if (!Directory.Exists(path))
         {
-            Console.Error.WriteLine($"Error: Folder not found: {path}");
+            var msg = target.ToLowerInvariant() == "output"
+                ? "Error: Output folder does not exist yet. Run a query first to create it."
+                : $"Error: Folder not found: {path}";
+            Console.Error.WriteLine(msg);
             return 1;
         }
         Process.Start("explorer.exe", path);

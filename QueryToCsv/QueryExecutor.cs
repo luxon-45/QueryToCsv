@@ -12,13 +12,13 @@ public static partial class QueryExecutor
 {
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
-    [GeneratedRegex(@"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|MERGE|GRANT|REVOKE|DENY|BULK)\b", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|MERGE|GRANT|REVOKE|DENY|BULK|INTO|OPENROWSET|OPENDATASOURCE|OPENQUERY)\b", RegexOptions.IgnoreCase)]
     private static partial Regex ProhibitedKeywordsRegex();
 
     [GeneratedRegex(@"--[^\r\n]*|/\*[\s\S]*?\*/|'(?:[^']|'')*'", RegexOptions.None)]
     private static partial Regex CommentsAndStringsRegex();
 
-    public static int Execute(AppSettings settings, string sql, string? baseName, bool includeHeader, Encoding csvEncoding)
+    public static int Execute(AppSettings settings, string connectionString, string sql, string? baseName, bool includeHeader, Encoding csvEncoding)
     {
         var label = baseName ?? "Direct Input";
 
@@ -32,9 +32,10 @@ public static partial class QueryExecutor
         var outputPath = BuildOutputPath(settings, baseName);
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
 
+        var tempPath = outputPath + ".tmp";
         try
         {
-            using var connection = new SqlConnection(settings.ConnectionString);
+            using var connection = new SqlConnection(connectionString);
             Logger.Info("Connecting to SQL Server...");
             Console.WriteLine("Connecting...");
             connection.Open();
@@ -47,12 +48,17 @@ public static partial class QueryExecutor
             using var reader = command.ExecuteReader();
 
             Console.WriteLine("Writing CSV...");
-            var rowCount = WriteCsv(reader, outputPath, csvEncoding, includeHeader, settings.CsvSettings);
+            var rowCount = WriteCsv(reader, tempPath, csvEncoding, includeHeader, settings.CsvSettings);
+
+            File.Move(tempPath, outputPath);
 
             Logger.Info($"CSV written: {outputPath} ({rowCount} rows)");
             Console.WriteLine();
             Console.WriteLine($"Done: {outputPath}");
             Console.WriteLine($"Rows: {rowCount.ToString("N0", CultureInfo.InvariantCulture)}");
+            Console.WriteLine();
+            Console.WriteLine($"QueryToCsv --open output");
+            Console.WriteLine($"QueryToCsv --open \"{outputPath}\"");
             return 0;
         }
         catch (SqlException ex) when (ex.Number == -2)
@@ -63,9 +69,14 @@ public static partial class QueryExecutor
         }
         catch (SqlException ex)
         {
-            Logger.Error(ex, ex.Message);
+            Logger.Error(ex, "SQL execution failed");
             Console.Error.WriteLine($"Error: {ex.Message}");
             return 1;
+        }
+        finally
+        {
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); }
+            catch { /* best effort cleanup */ }
         }
     }
 

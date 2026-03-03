@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Data.SqlClient;
 
 namespace QueryToCsv;
 
@@ -18,14 +19,16 @@ public static class ConsoleUi
             var input = Console.ReadLine();
             if (input is null) Environment.Exit(1);
 
-            if (!int.TryParse(input, out var num))
-                continue;
+            if (int.TryParse(input, out var num))
+            {
+                if (num == 0)
+                    return -1;
 
-            if (num == 0)
-                return -1;
+                if (num >= 1 && num <= fileNames.Length)
+                    return num - 1;
+            }
 
-            if (num >= 1 && num <= fileNames.Length)
-                return num - 1;
+            Console.Error.WriteLine($"Please enter a number between 0 and {fileNames.Length}.");
         }
     }
 
@@ -59,6 +62,8 @@ public static class ConsoleUi
 
             if (input.Equals("y", StringComparison.OrdinalIgnoreCase)) return true;
             if (input.Equals("n", StringComparison.OrdinalIgnoreCase)) return false;
+
+            Console.Error.WriteLine("Please enter y or n.");
         }
     }
 
@@ -87,6 +92,50 @@ public static class ConsoleUi
                     case 4: return Encoding.GetEncoding("Shift-JIS");
                 }
             }
+
+            Console.Error.WriteLine("Please enter a number between 1 and 4.");
+        }
+    }
+
+    public static int SelectConnection(IReadOnlyList<ConnectionEntry> connections)
+    {
+        if (connections.Count == 1)
+            return 0;
+
+        Console.WriteLine("=== Select connection ===");
+        for (var i = 0; i < connections.Count; i++)
+        {
+            var info = FormatConnectionInfo(connections[i].ConnectionString);
+            Console.WriteLine($"{i + 1}. {connections[i].Name} ({info})");
+        }
+        Console.WriteLine();
+
+        while (true)
+        {
+            Console.Write("Enter number: ");
+            var input = Console.ReadLine();
+            if (input is null) Environment.Exit(1);
+
+            if (int.TryParse(input, out var num) && num >= 1 && num <= connections.Count)
+                return num - 1;
+
+            Console.Error.WriteLine($"Please enter a number between 1 and {connections.Count}.");
+        }
+
+    }
+
+    private static string FormatConnectionInfo(string connectionString)
+    {
+        try
+        {
+            var builder = new SqlConnectionStringBuilder(connectionString);
+            var server = string.IsNullOrEmpty(builder.DataSource) ? "?" : builder.DataSource;
+            var database = string.IsNullOrEmpty(builder.InitialCatalog) ? "?" : builder.InitialCatalog;
+            return $"{server} - {database}";
+        }
+        catch
+        {
+            return "?";
         }
     }
 }

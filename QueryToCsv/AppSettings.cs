@@ -4,6 +4,12 @@ using Microsoft.Extensions.Configuration;
 
 namespace QueryToCsv;
 
+public class ConnectionEntry
+{
+    public string Name { get; set; } = "";
+    public string ConnectionString { get; set; } = "";
+}
+
 public class CsvSettings
 {
     public string Delimiter { get; set; } = ",";
@@ -14,7 +20,7 @@ public class CsvSettings
 
 public class AppSettings
 {
-    public string ConnectionString { get; set; } = "";
+    public List<ConnectionEntry> Connections { get; set; } = [];
     public string QueryFolder { get; set; } = "";
     public string OutputFolder { get; set; } = "";
     public int QueryTimeout { get; set; } = 30;
@@ -41,15 +47,25 @@ public class AppSettings
                 .AddJsonFile("appsettings.json")
                 .Build();
         }
-        catch
+        catch (Exception ex)
         {
-            Console.Error.WriteLine("Error: Failed to load appsettings.json.");
+            Console.Error.WriteLine($"Error: Failed to load appsettings.json. {ex.Message}");
             return null;
+        }
+
+        var connections = new List<ConnectionEntry>();
+        foreach (var child in config.GetSection("Connections").GetChildren())
+        {
+            connections.Add(new ConnectionEntry
+            {
+                Name = child["Name"] ?? "",
+                ConnectionString = child["ConnectionString"] ?? "",
+            });
         }
 
         var settings = new AppSettings
         {
-            ConnectionString = config["ConnectionString"] ?? "",
+            Connections = connections,
             QueryFolder = config["QueryFolder"] ?? "",
             OutputFolder = config["OutputFolder"] ?? "",
             SqlFileEncoding = config["SqlFileEncoding"] ?? "UTF-8",
@@ -70,19 +86,38 @@ public class AppSettings
             settings.CsvSettings.DateFormat = csvSection["DateFormat"];
         }
 
-        // パスを exe 基準で解決
-        settings.QueryFolder = Path.GetFullPath(settings.QueryFolder, baseDir);
-        settings.OutputFolder = Path.GetFullPath(settings.OutputFolder, baseDir);
+        // Resolve paths relative to the exe directory
+        settings.QueryFolder = string.IsNullOrWhiteSpace(settings.QueryFolder)
+            ? ""
+            : Path.GetFullPath(settings.QueryFolder, baseDir);
+        settings.OutputFolder = string.IsNullOrWhiteSpace(settings.OutputFolder)
+            ? ""
+            : Path.GetFullPath(settings.OutputFolder, baseDir);
 
         return settings;
     }
 
     public bool Validate()
     {
-        if (string.IsNullOrWhiteSpace(ConnectionString))
+        if (Connections.Count == 0)
         {
-            Console.Error.WriteLine("Error: ConnectionString is required.");
+            Console.Error.WriteLine("Error: Connections must contain at least one entry.");
             return false;
+        }
+
+        for (var i = 0; i < Connections.Count; i++)
+        {
+            var entry = Connections[i];
+            if (string.IsNullOrWhiteSpace(entry.Name))
+            {
+                Console.Error.WriteLine($"Error: Connections[{i}].Name is required.");
+                return false;
+            }
+            if (string.IsNullOrWhiteSpace(entry.ConnectionString))
+            {
+                Console.Error.WriteLine($"Error: Connections[{i}].ConnectionString is required.");
+                return false;
+            }
         }
 
         if (string.IsNullOrWhiteSpace(QueryFolder))
@@ -119,7 +154,7 @@ public class AppSettings
         {
             Encoding.GetEncoding(SqlFileEncoding);
         }
-        catch
+        catch (ArgumentException)
         {
             Console.Error.WriteLine($"Error: SqlFileEncoding \"{SqlFileEncoding}\" is not a valid encoding.");
             return false;
@@ -131,7 +166,7 @@ public class AppSettings
             {
                 DateTime.Now.ToString(CsvSettings.DateFormat, CultureInfo.InvariantCulture);
             }
-            catch
+            catch (FormatException)
             {
                 Console.Error.WriteLine($"Error: DateFormat \"{CsvSettings.DateFormat}\" is not valid.");
                 return false;
