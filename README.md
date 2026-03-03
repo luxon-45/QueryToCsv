@@ -264,7 +264,7 @@ If a file with the same name already exists, a suffix is appended: `_2`, `_3`, e
 | Invalid JSON in config | `Error: Failed to load appsettings.json.`, exit code 1 |
 | Invalid config values | `Error: <detail>`, exit code 1 |
 | `QueryFolder` does not exist | Error message, exit code 1 |
-| No `.sql` files found | `No query files found.`, exit code 1 |
+| No `.sql` files found | Only "Enter query directly" (option 0) is shown; direct input is still available |
 | `OutputFolder` does not exist | Automatically created |
 | Connection failure | `Error: <detail>`, exit code 1 |
 | SQL execution error | `Error: <detail>`, exit code 1 |
@@ -278,6 +278,10 @@ If a file with the same name already exists, a suffix is appended: `_2`, `_3`, e
 |------|---------|
 | `0` | Success |
 | `1` | Error |
+
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.
 
 ## Building the Installer
 
