@@ -19,3 +19,18 @@ Both files must be updated together:
 
 1. `QueryToCsv/QueryToCsv.csproj` — `<Version>` element
 2. `Build/Setup.iss` — `#define MyAppVersion`
+
+## Release
+
+When creating a GitHub release, build and attach both assets:
+
+1. Build the executable: `powershell -ExecutionPolicy Bypass -File Build/Build.ps1`
+2. Build the installer: `"C:/Program Files (x86)/Inno Setup 6/ISCC.exe" Build/Setup.iss`
+3. Create the release with both files:
+
+```
+gh release create v{version} \
+  "Build/Installer/QueryToCsv-Setup-{version}.exe" \
+  "Build/QueryToCsv/QueryToCsv.exe" \
+  --title "v{version}" --notes "..."
+```
