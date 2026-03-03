@@ -92,6 +92,39 @@ To exit the application at any time, press **Ctrl+C**.
 
 At any input prompt, **Ctrl+Z** followed by Enter also exits (exit code 1). Exception: in direct SQL input mode, Ctrl+Z ends the SQL entry and proceeds with execution instead of quitting.
 
+### One-Liner Mode
+
+Run a query non-interactively with CLI options. Useful for scripts, scheduled tasks, and quick one-off commands.
+
+Inline query with defaults (single connection, UTF-8, with header):
+
+```
+QueryToCsv -q "SELECT * FROM Users"
+```
+
+SQL file with defaults:
+
+```
+QueryToCsv -f sales_report.sql
+```
+
+All options specified:
+
+```
+QueryToCsv -c "Dev Server" -q "SELECT * FROM Users WHERE Active = 1" --no-header -e utf-8-bom
+```
+
+| Option | Long | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `-c` | `--connection` | If multiple connections | Auto-select if only one | Connection name from appsettings.json |
+| `-q` | `--query` | One of `-q`/`-f` | - | Inline SQL string |
+| `-f` | `--file` | One of `-q`/`-f` | - | SQL file name (resolved in QueryFolder) or absolute path |
+| `-e` | `--encoding` | No | `utf-8` | CSV encoding: `utf-8`, `utf-8-bom`, `utf-16`, `shift-jis` |
+| | `--header` | No | (default) | Include header row |
+| | `--no-header` | No | - | Exclude header row |
+
+When `-q` or `-f` is present, the tool runs in one-liner mode and skips all interactive prompts. When neither is present, the tool runs in interactive mode as usual.
+
 ### Help
 
 ```
@@ -270,6 +303,12 @@ If a file with the same name already exists, a suffix is appended: `_2`, `_3`, e
 | SQL execution error | `Error: <detail>`, exit code 1 |
 | Query timeout | `Error: Query timed out.`, exit code 1 |
 | Non-SELECT statement detected | `Error: Only SELECT statements are allowed.`, exit code 1 |
+| `-q` and `-f` both specified | `Error: -q and -f cannot be used together.`, exit code 1 |
+| `-c` name not found | `Error: Connection "<name>" not found.`, exit code 1 |
+| `-c` omitted with multiple connections | `Error: -c is required when multiple connections are configured.`, exit code 1 |
+| `-f` file not found | `Error: SQL file not found: <path>`, exit code 1 |
+| Unknown `-e` encoding | `Error: Unknown encoding "<name>". Use: utf-8, utf-8-bom, utf-16, shift-jis`, exit code 1 |
+| Unknown CLI option | `Error: Unknown option: <option>`, exit code 1 |
 | Query returns 0 rows | CSV written (empty or header-only), exit code 0 |
 
 ### Exit Codes

@@ -82,19 +82,32 @@ public static class ConsoleUi
             var input = Console.ReadLine();
             if (input is null) Environment.Exit(1);
 
-            if (int.TryParse(input, out var num))
+            var encoding = input switch
             {
-                switch (num)
-                {
-                    case 1: return new UTF8Encoding(false);
-                    case 2: return new UTF8Encoding(true);
-                    case 3: return Encoding.Unicode;
-                    case 4: return Encoding.GetEncoding("Shift-JIS");
-                }
-            }
+                "1" => ResolveEncoding("utf-8"),
+                "2" => ResolveEncoding("utf-8-bom"),
+                "3" => ResolveEncoding("utf-16"),
+                "4" => ResolveEncoding("shift-jis"),
+                _ => null,
+            };
+
+            if (encoding is not null)
+                return encoding;
 
             Console.Error.WriteLine("Please enter a number between 1 and 4.");
         }
+    }
+
+    public static Encoding? ResolveEncoding(string name)
+    {
+        return name.ToLowerInvariant() switch
+        {
+            "utf-8" or "utf8" => new UTF8Encoding(false),
+            "utf-8-bom" or "utf8-bom" => new UTF8Encoding(true),
+            "utf-16" or "utf16" => Encoding.Unicode,
+            "shift-jis" or "shiftjis" or "shift_jis" => Encoding.GetEncoding("Shift-JIS"),
+            _ => null,
+        };
     }
 
     public static int SelectConnection(IReadOnlyList<ConnectionEntry> connections)

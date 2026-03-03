@@ -13,6 +13,10 @@ if (args.Length >= 1 && (args[0] == "-h" || args[0] == "--help"))
 if (args.Length >= 2 && args[0] == "--open")
     return HandleOpen(args[1]);
 
+var (runArgs, parseExitCode) = ParseRunArgs(args);
+if (parseExitCode is not null)
+    return parseExitCode.Value;
+
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 var logger = ConfigureNLog(30);
@@ -21,8 +25,11 @@ logger.Info($"Application started (v{version})");
 
 try
 {
-    Console.WriteLine("=== QueryToCsv ===");
-    Console.WriteLine();
+    if (runArgs is null)
+    {
+        Console.WriteLine("=== QueryToCsv ===");
+        Console.WriteLine();
+    }
 
     var settings = AppSettings.Load();
     if (settings is null)
@@ -38,6 +45,16 @@ try
     {
         logger.Error("Application finished (exit code: 1)");
         return 1;
+    }
+
+    if (runArgs is not null)
+    {
+        var result = RunOneLiner(settings, runArgs, logger);
+        if (result == 0)
+            logger.Info("Application finished (exit code: 0)");
+        else
+            logger.Error($"Application finished (exit code: {result})");
+        return result;
     }
 
     var connectionIndex = ConsoleUi.SelectConnection(settings.Connections);
@@ -98,6 +115,153 @@ finally
     LogManager.Shutdown();
 }
 
+static (CliRunArgs? RunArgs, int? ExitCode) ParseRunArgs(string[] args)
+{
+    if (args.Length == 0)
+        return (null, null);
+
+    string? connectionName = null;
+    string? inlineQuery = null;
+    string? sqlFile = null;
+    string encodingName = "utf-8";
+    var includeHeader = true;
+
+    for (var i = 0; i < args.Length; i++)
+    {
+        switch (args[i])
+        {
+            case "-c" or "--connection":
+                if (i + 1 >= args.Length)
+                {
+                    Console.Error.WriteLine($"Error: {args[i]} requires a value.");
+                    return (null, 1);
+                }
+                connectionName = args[++i];
+                break;
+            case "-q" or "--query":
+                if (i + 1 >= args.Length)
+                {
+                    Console.Error.WriteLine($"Error: {args[i]} requires a value.");
+                    return (null, 1);
+                }
+                inlineQuery = args[++i];
+                break;
+            case "-f" or "--file":
+                if (i + 1 >= args.Length)
+                {
+                    Console.Error.WriteLine($"Error: {args[i]} requires a value.");
+                    return (null, 1);
+                }
+                sqlFile = args[++i];
+                break;
+            case "-e" or "--encoding":
+                if (i + 1 >= args.Length)
+                {
+                    Console.Error.WriteLine($"Error: {args[i]} requires a value.");
+                    return (null, 1);
+                }
+                encodingName = args[++i];
+                break;
+            case "--header":
+                includeHeader = true;
+                break;
+            case "--no-header":
+                includeHeader = false;
+                break;
+            default:
+                Console.Error.WriteLine($"Error: Unknown option: {args[i]}");
+                return (null, 1);
+        }
+    }
+
+    if (inlineQuery is not null && sqlFile is not null)
+    {
+        Console.Error.WriteLine("Error: -q and -f cannot be used together.");
+        return (null, 1);
+    }
+
+    if (inlineQuery is null && sqlFile is null)
+    {
+        Console.Error.WriteLine("Error: -q or -f is required when using CLI options.");
+        return (null, 1);
+    }
+
+    return (new CliRunArgs(connectionName, inlineQuery, sqlFile, encodingName, includeHeader), null);
+}
+
+static int RunOneLiner(AppSettings settings, CliRunArgs runArgs, Logger logger)
+{
+    // Resolve connection
+    string connectionString;
+    string connectionName;
+
+    if (runArgs.ConnectionName is not null)
+    {
+        var entry = settings.Connections.FirstOrDefault(c =>
+            c.Name.Equals(runArgs.ConnectionName, StringComparison.OrdinalIgnoreCase));
+        if (entry is null)
+        {
+            Console.Error.WriteLine($"Error: Connection \"{runArgs.ConnectionName}\" not found.");
+            return 1;
+        }
+        connectionString = entry.ConnectionString;
+        connectionName = entry.Name;
+    }
+    else if (settings.Connections.Count == 1)
+    {
+        connectionString = settings.Connections[0].ConnectionString;
+        connectionName = settings.Connections[0].Name;
+    }
+    else
+    {
+        Console.Error.WriteLine("Error: -c is required when multiple connections are configured.");
+        return 1;
+    }
+
+    logger.Info($"Connection selected: {connectionName}");
+
+    // Resolve query
+    string sql;
+    string? baseName;
+
+    if (runArgs.InlineQuery is not null)
+    {
+        sql = runArgs.InlineQuery;
+        baseName = null;
+        logger.Info("Query selected: [Inline]");
+    }
+    else
+    {
+        var filePath = runArgs.SqlFile!;
+
+        if (!Path.IsPathRooted(filePath))
+            filePath = Path.Combine(settings.QueryFolder, filePath);
+
+        if (!File.Exists(filePath))
+        {
+            Console.Error.WriteLine($"Error: SQL file not found: {filePath}");
+            return 1;
+        }
+
+        var sqlEncoding = Encoding.GetEncoding(settings.SqlFileEncoding);
+        sql = File.ReadAllText(filePath, sqlEncoding);
+        baseName = Path.GetFileNameWithoutExtension(filePath);
+        logger.Info($"Query selected: {Path.GetFileName(filePath)}");
+    }
+
+    // Resolve encoding
+    var csvEncoding = ConsoleUi.ResolveEncoding(runArgs.EncodingName);
+    if (csvEncoding is null)
+    {
+        Console.Error.WriteLine($"Error: Unknown encoding \"{runArgs.EncodingName}\". Use: utf-8, utf-8-bom, utf-16, shift-jis");
+        return 1;
+    }
+
+    logger.Info($"Header: {(runArgs.IncludeHeader ? "yes" : "no")}, Encoding: {csvEncoding.EncodingName}");
+
+    return QueryExecutor.Execute(settings, connectionString, sql, baseName, runArgs.IncludeHeader, csvEncoding);
+}
+
 static int PrintHelp()
 {
     var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
@@ -105,8 +269,20 @@ static int PrintHelp()
     Console.WriteLine();
     Console.WriteLine("USAGE");
     Console.WriteLine("  QueryToCsv                      Run interactively");
+    Console.WriteLine("  QueryToCsv -q <sql> [options]   Run a query and exit");
+    Console.WriteLine("  QueryToCsv -f <file> [options]  Run a SQL file and exit");
     Console.WriteLine("  QueryToCsv --open <target>      Open a folder or file and exit");
     Console.WriteLine("  QueryToCsv -h | --help          Show this help");
+    Console.WriteLine();
+    Console.WriteLine("OPTIONS");
+    Console.WriteLine("  -c, --connection <name>   Connection name from appsettings.json");
+    Console.WriteLine("                            (required if multiple connections exist)");
+    Console.WriteLine("  -q, --query <sql>         Inline SQL query string");
+    Console.WriteLine("  -f, --file <name|path>    SQL file in QueryFolder, or absolute path");
+    Console.WriteLine("  -e, --encoding <name>     CSV encoding: utf-8 (default), utf-8-bom,");
+    Console.WriteLine("                            utf-16, shift-jis");
+    Console.WriteLine("      --header              Include header row (default)");
+    Console.WriteLine("      --no-header           Exclude header row");
     Console.WriteLine();
     Console.WriteLine("--open TARGETS");
     Console.WriteLine("  queries       Open the queries folder in Explorer");
@@ -213,3 +389,5 @@ static Logger ConfigureNLog(int maxArchiveDays)
     LogManager.Configuration = config;
     return LogManager.GetCurrentClassLogger();
 }
+
+record CliRunArgs(string? ConnectionName, string? InlineQuery, string? SqlFile, string EncodingName, bool IncludeHeader);
