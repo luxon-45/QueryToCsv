@@ -16,7 +16,7 @@ Rule bodies live under `docs/rules/`. Edit this file, never `CLAUDE.md`.
 | UI | CLI (no UI) |
 | Database | Microsoft SQL Server via `Microsoft.Data.SqlClient` |
 | CSV | CsvHelper (RFC 4180) |
-| Logging | NLog, daily rotation under `logs/` next to the executable |
+| Logging | NLog, one file per day under `logs/` next to the executable, falling back to the user's local application data when that folder cannot be written to |
 | Distribution | Self-contained publish + Inno Setup installer; the published file set follows from the native dependencies (`docs/rules/dotnet.md` NATIVEDEP) |
 
 ## Applications
@@ -59,12 +59,13 @@ how a rule goes unapplied.
 
 The main project. Contains all application source code.
 
-- `Program.cs` — entry point: help, version, `--open`, one-liner mode, interactive flow, NLog setup
+- `Program.cs` — entry point: help, version, `--open`, one-liner mode, interactive flow
+- `LogSetup.cs` — NLog configuration, log-directory fallback, retention sweep
 - `CliInvocation.cs` — top-level CLI mode selection and `--open` target parsing
 - `CliRunArgs.cs` — command-line parsing for one-liner mode
 - `ApplicationVersion.cs` — product-version resolution and display text
-- `ConsoleMessages.cs` — standard runtime and usage error output
-- `AppSettings.cs` — `appsettings.json` loading, path resolution, validation
+- `ConsoleMessages.cs` — standard warning, runtime error, and usage error output
+- `AppSettings.cs` — `appsettings.json` loading, path resolution, defaults for unusable values, required-input check
 - `ConsoleUi.cs` — interactive prompts and CSV encoding resolution
 - `QueryExecutor.cs` — SELECT-only check, query execution, CSV writing
 - `appsettings.template.json` — the template shipped as the initial `appsettings.json`; the real `appsettings.json` holds connection strings and is gitignored

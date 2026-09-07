@@ -1,14 +1,16 @@
 using System.Diagnostics;
 using System.Text;
 using NLog;
-using NLog.Config;
-using NLog.Targets;
 using QueryToCsv;
 
 // Native SNI.dll is not published (see docs/rules/dotnet.md, NATIVEDEP), so SqlClient
 // must be switched to its managed networking stack before it opens its first connection.
 const string ManagedNetworkingSwitch = "Switch.Microsoft.Data.SqlClient.UseManagedNetworkingOnWindows";
 AppContext.SetSwitch(ManagedNetworkingSwitch, true);
+
+// Shift-JIS lives in the CodePages provider, and every mode that reads configuration
+// checks the configured encoding name against it, --open included.
+Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 var (invocation, parseError) = CliInvocation.Parse(args);
 if (parseError is not null)
@@ -30,8 +32,6 @@ switch (invocation!.Mode)
 
 var runArgs = invocation.RunArgs;
 
-Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-
 Encoding? commandLineEncoding = null;
 if (runArgs is not null)
 {
@@ -45,29 +45,32 @@ if (runArgs is not null)
     }
 }
 
-var logger = ConfigureNLog(AppSettings.DefaultLogRetentionDays);
+var logger = LogSetup.Configure();
 logger.Info($"Application started (v{ApplicationVersion.ProductVersion})");
 
 try
 {
     if (runArgs is null)
     {
-        Console.WriteLine("=== QueryToCsv ===");
-        Console.WriteLine();
+        Console.Error.WriteLine("=== QueryToCsv ===");
+        Console.Error.WriteLine();
     }
 
-    var settings = AppSettings.Load();
-    if (settings is null)
+    var (settings, notices) = AppSettings.Load();
+    foreach (var notice in notices)
     {
-        logger.Error("Application finished (exit code: 1)");
-        return 1;
+        ConsoleMessages.WriteWarning(notice);
+        logger.Warn(notice);
     }
 
-    logger = ConfigureNLog(settings.LogRetentionDays);
+    LogSetup.DeleteExpiredLogs(settings.LogRetentionDays);
     logger.Info("Settings loaded");
 
-    if (!settings.Validate())
+    var settingsError = settings.ValidationError();
+    if (settingsError is not null)
     {
+        ConsoleMessages.WriteError(settingsError);
+        logger.Error(settingsError);
         logger.Error("Application finished (exit code: 1)");
         return 1;
     }
@@ -85,10 +88,13 @@ try
     var connectionIndex = ConsoleUi.SelectConnection(settings.Connections);
     var connectionString = settings.Connections[connectionIndex].ConnectionString;
     logger.Info($"Connection selected: {settings.Connections[connectionIndex].Name}");
-    Console.WriteLine();
+    Console.Error.WriteLine();
 
-    var sqlFiles = Directory.GetFiles(settings.QueryFolder, "*.sql");
-    Array.Sort(sqlFiles, (a, b) => string.Compare(Path.GetFileName(a), Path.GetFileName(b), StringComparison.OrdinalIgnoreCase));
+    string[] sqlFiles = Directory.Exists(settings.QueryFolder)
+        ? Directory.GetFiles(settings.QueryFolder, "*.sql")
+            .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
+            .ToArray()
+        : [];
 
     var fileNames = sqlFiles.Select(Path.GetFileName).ToArray()!;
     var selectedIndex = ConsoleUi.SelectQuery(fileNames!);
@@ -98,7 +104,7 @@ try
 
     if (selectedIndex == -1)
     {
-        Console.WriteLine();
+        Console.Error.WriteLine();
         sql = ConsoleUi.InputQuery();
         baseName = null;
         logger.Info("Query selected: [Direct Input]");
@@ -111,14 +117,14 @@ try
         baseName = Path.GetFileNameWithoutExtension(sqlFilePath);
         logger.Info($"Query selected: {fileNames[selectedIndex]}");
     }
-    Console.WriteLine();
+    Console.Error.WriteLine();
 
     var includeHeader = ConsoleUi.AskIncludeHeader();
-    Console.WriteLine();
+    Console.Error.WriteLine();
 
     var csvEncoding = ConsoleUi.SelectEncoding();
     logger.Info($"Header: {(includeHeader ? "yes" : "no")}, Encoding: {csvEncoding.EncodingName}");
-    Console.WriteLine();
+    Console.Error.WriteLine();
 
     var exitCode = QueryExecutor.Execute(settings, connectionString, sql, baseName, includeHeader, csvEncoding);
 
@@ -265,21 +271,11 @@ static int HandleOpen(string target)
         case "queries":
         case "output":
             {
-                var settings = AppSettings.Load();
-                if (settings is null)
-                    return 1;
+                var (settings, notices) = AppSettings.Load();
+                foreach (var notice in notices)
+                    ConsoleMessages.WriteWarning(notice);
 
-                var isQueries = normalizedTarget is "queries";
-                path = isQueries ? settings.QueryFolder : settings.OutputFolder;
-
-                if (string.IsNullOrWhiteSpace(path))
-                {
-                    var key = isQueries ? "QueryFolder" : "OutputFolder";
-                    ConsoleMessages.WriteError(
-                        $"{key} is not configured in appsettings.json.");
-                    return 1;
-                }
-
+                path = normalizedTarget is "queries" ? settings.QueryFolder : settings.OutputFolder;
                 isFile = false;
                 break;
             }
@@ -288,7 +284,7 @@ static int HandleOpen(string target)
             isFile = true;
             break;
         case "log":
-            path = Path.Combine(baseDir, AppPaths.LogFolderName);
+            path = Path.Combine(baseDir, LogSetup.FolderName);
             isFile = false;
             break;
         default:
@@ -330,33 +326,4 @@ static int HandleOpen(string target)
     }
 
     return 0;
-}
-
-static Logger ConfigureNLog(int maxArchiveDays)
-{
-    var logDir = Path.Combine(AppContext.BaseDirectory, AppPaths.LogFolderName);
-
-    var config = new LoggingConfiguration();
-
-    var fileTarget = new FileTarget("file")
-    {
-        FileName = Path.Combine(logDir, "QueryToCsv.log"),
-        ArchiveEvery = FileArchivePeriod.Day,
-        ArchiveFileName = Path.Combine(logDir, "QueryToCsv.{#}.log"),
-        ArchiveNumbering = ArchiveNumberingMode.Date,
-        ArchiveDateFormat = "yyyyMMdd",
-        MaxArchiveDays = maxArchiveDays,
-        Layout = "${longdate} [${level:uppercase=true:padding=-5}] ${message}${onexception:inner= ${exception:format=tostring}}",
-    };
-
-    config.AddTarget(fileTarget);
-    config.AddRule(LogLevel.Info, LogLevel.Fatal, fileTarget);
-
-    LogManager.Configuration = config;
-    return LogManager.GetCurrentClassLogger();
-}
-
-static class AppPaths
-{
-    public const string LogFolderName = "logs";
 }

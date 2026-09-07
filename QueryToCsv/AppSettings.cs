@@ -12,177 +12,245 @@ public class ConnectionEntry
 
 public class CsvSettings
 {
-    public string Delimiter { get; set; } = ",";
-    public string NullValue { get; set; } = "";
-    public string NewLine { get; set; } = "CRLF";
+    public const string DefaultDelimiter = ",";
+    public const string DefaultNullValue = "";
+    public const string DefaultNewLine = "CRLF";
+
+    public string Delimiter { get; set; } = DefaultDelimiter;
+    public string NullValue { get; set; } = DefaultNullValue;
+    public string NewLine { get; set; } = DefaultNewLine;
     public string? DateFormat { get; set; }
 }
 
 public class AppSettings
 {
     public const string FileName = "appsettings.json";
+    public const string DefaultQueryFolderName = "queries";
+    public const string DefaultOutputFolderName = "output";
+    public const string DefaultSqlFileEncoding = "UTF-8";
+    public const int DefaultQueryTimeout = 30;
     public const int DefaultLogRetentionDays = 30;
+
+    private const string QueryFolderKey = "QueryFolder";
+    private const string OutputFolderKey = "OutputFolder";
+    private const string QueryTimeoutKey = "QueryTimeout";
+    private const string LogRetentionDaysKey = "LogRetentionDays";
+    private const string SqlFileEncodingKey = "SqlFileEncoding";
+    private const string DelimiterKey = "CsvSettings:Delimiter";
+    private const string NullValueKey = "CsvSettings:NullValue";
+    private const string NewLineKey = "CsvSettings:NewLine";
+    private const string DateFormatKey = "CsvSettings:DateFormat";
 
     public List<ConnectionEntry> Connections { get; set; } = [];
     public string QueryFolder { get; set; } = "";
     public string OutputFolder { get; set; } = "";
-    public int QueryTimeout { get; set; } = 30;
-    public string SqlFileEncoding { get; set; } = "UTF-8";
+    public int QueryTimeout { get; set; } = DefaultQueryTimeout;
+    public string SqlFileEncoding { get; set; } = DefaultSqlFileEncoding;
     public int LogRetentionDays { get; set; } = DefaultLogRetentionDays;
     public CsvSettings CsvSettings { get; set; } = new();
 
-    public static AppSettings? Load()
+    // Returns the settings to run on, plus one notice per configured value that was
+    // rejected. A missing or unreadable file is itself a notice, never a failure
+    // (docs/rules/standard.md, Configuration Values).
+    public static (AppSettings Settings, IReadOnlyList<string> Notices) Load()
     {
-        var baseDir = AppContext.BaseDirectory;
-        var configPath = Path.Combine(baseDir, FileName);
+        var baseDirectory = AppContext.BaseDirectory;
 
-        if (!File.Exists(configPath))
+        if (!File.Exists(Path.Combine(baseDirectory, FileName)))
         {
-            ConsoleMessages.WriteError("appsettings.json not found.");
-            return null;
+            return (Defaults(baseDirectory),
+                [$"{FileName} not found; continuing with built-in defaults."]);
         }
 
         IConfiguration config;
         try
         {
             config = new ConfigurationBuilder()
-                .SetBasePath(baseDir)
+                .SetBasePath(baseDirectory)
                 .AddJsonFile(FileName)
                 .Build();
         }
         catch (Exception)
         {
-            ConsoleMessages.WriteError("failed to load appsettings.json.");
-            return null;
+            return (Defaults(baseDirectory),
+                [$"failed to load {FileName}; continuing with built-in defaults."]);
         }
 
-        var connections = new List<ConnectionEntry>();
-        foreach (var child in config.GetSection("Connections").GetChildren())
-        {
-            connections.Add(new ConnectionEntry
-            {
-                Name = child["Name"] ?? "",
-                ConnectionString = child["ConnectionString"] ?? "",
-            });
-        }
-
-        var settings = new AppSettings
-        {
-            Connections = connections,
-            QueryFolder = config["QueryFolder"] ?? "",
-            OutputFolder = config["OutputFolder"] ?? "",
-            SqlFileEncoding = config["SqlFileEncoding"] ?? "UTF-8",
-        };
-
-        if (int.TryParse(config["QueryTimeout"], out var timeout))
-            settings.QueryTimeout = timeout;
-
-        if (int.TryParse(config["LogRetentionDays"], out var retention) && retention > 0)
-            settings.LogRetentionDays = retention;
-
-        var csvSection = config.GetSection("CsvSettings");
-        if (csvSection.Exists())
-        {
-            settings.CsvSettings.Delimiter = csvSection["Delimiter"] ?? ",";
-            settings.CsvSettings.NullValue = csvSection["NullValue"] ?? "";
-            settings.CsvSettings.NewLine = csvSection["NewLine"] ?? "CRLF";
-            settings.CsvSettings.DateFormat = csvSection["DateFormat"];
-        }
-
-        settings.QueryFolder = string.IsNullOrWhiteSpace(settings.QueryFolder)
-            ? ""
-            : Path.GetFullPath(settings.QueryFolder, baseDir);
-        settings.OutputFolder = string.IsNullOrWhiteSpace(settings.OutputFolder)
-            ? ""
-            : Path.GetFullPath(settings.OutputFolder, baseDir);
-
-        return settings;
+        return FromConfiguration(config, baseDirectory);
     }
 
-    public bool Validate()
+    internal static (AppSettings Settings, IReadOnlyList<string> Notices) FromConfiguration(
+        IConfiguration config,
+        string baseDirectory)
+    {
+        var notices = new List<string>();
+        var settings = Defaults(baseDirectory);
+
+        T Accept<T>((T Value, string? Notice) resolved)
+        {
+            if (resolved.Notice is not null)
+                notices.Add(resolved.Notice);
+
+            return resolved.Value;
+        }
+
+        settings.Connections = config.GetSection("Connections").GetChildren()
+            .Select(entry => new ConnectionEntry
+            {
+                Name = entry["Name"] ?? "",
+                ConnectionString = entry["ConnectionString"] ?? "",
+            })
+            .ToList();
+
+        settings.QueryFolder = Accept(ResolveFolder(
+            config, QueryFolderKey, Path.Combine(baseDirectory, DefaultQueryFolderName), baseDirectory, mustExist: true));
+        settings.OutputFolder = Accept(ResolveFolder(
+            config, OutputFolderKey, Path.Combine(baseDirectory, DefaultOutputFolderName), baseDirectory, mustExist: false));
+        settings.QueryTimeout = Accept(ResolvePositiveNumber(config, QueryTimeoutKey, DefaultQueryTimeout));
+        settings.LogRetentionDays = Accept(ResolvePositiveNumber(config, LogRetentionDaysKey, DefaultLogRetentionDays));
+        settings.SqlFileEncoding = Accept(ResolveEncodingName(config, SqlFileEncodingKey));
+        settings.CsvSettings.Delimiter = Accept(ResolveDelimiter(config, DelimiterKey));
+        settings.CsvSettings.NullValue = config[NullValueKey] ?? CsvSettings.DefaultNullValue;
+        settings.CsvSettings.NewLine = Accept(ResolveNewLine(config, NewLineKey));
+        settings.CsvSettings.DateFormat = Accept(ResolveDateFormat(config, DateFormatKey));
+
+        return (settings, notices);
+    }
+
+    // The reason the configuration cannot be used, or null when it can. Connections is
+    // required input rather than a defaulted value: no built-in value can name the
+    // server an operator means to query (docs/rules/QueryToCsv.md, Required Input).
+    public string? ValidationError()
     {
         if (Connections.Count == 0)
-        {
-            ConsoleMessages.WriteError("Connections must contain at least one entry.");
-            return false;
-        }
+            return "Connections must contain at least one entry.";
 
         for (var i = 0; i < Connections.Count; i++)
         {
-            var entry = Connections[i];
-            if (string.IsNullOrWhiteSpace(entry.Name))
-            {
-                ConsoleMessages.WriteError($"Connections[{i}].Name is required.");
-                return false;
-            }
-            if (string.IsNullOrWhiteSpace(entry.ConnectionString))
-            {
-                ConsoleMessages.WriteError($"Connections[{i}].ConnectionString is required.");
-                return false;
-            }
+            if (string.IsNullOrWhiteSpace(Connections[i].Name))
+                return $"Connections[{i}].Name is required.";
+
+            if (string.IsNullOrWhiteSpace(Connections[i].ConnectionString))
+                return $"Connections[{i}].ConnectionString is required.";
         }
 
-        if (string.IsNullOrWhiteSpace(QueryFolder))
-        {
-            ConsoleMessages.WriteError("QueryFolder is required.");
-            return false;
-        }
+        return null;
+    }
 
-        if (string.IsNullOrWhiteSpace(OutputFolder))
-        {
-            ConsoleMessages.WriteError("OutputFolder is required.");
-            return false;
-        }
+    private static AppSettings Defaults(string baseDirectory) => new()
+    {
+        QueryFolder = Path.Combine(baseDirectory, DefaultQueryFolderName),
+        OutputFolder = Path.Combine(baseDirectory, DefaultOutputFolderName),
+    };
 
-        if (QueryTimeout <= 0)
-        {
-            ConsoleMessages.WriteError("QueryTimeout must be greater than 0.");
-            return false;
-        }
+    // A relative folder resolves against the executable's directory, never against the
+    // working directory (docs/rules/dotnet.md, FILEPATH). QueryFolder has to exist to be
+    // usable; OutputFolder is created when the CSV is written.
+    private static (string Value, string? Notice) ResolveFolder(
+        IConfiguration config,
+        string key,
+        string fallback,
+        string baseDirectory,
+        bool mustExist)
+    {
+        var raw = config[key];
+        if (raw is null)
+            return (fallback, null);
 
-        if (CsvSettings.Delimiter.Length != 1)
-        {
-            ConsoleMessages.WriteError("Delimiter must be exactly one character.");
-            return false;
-        }
+        if (string.IsNullOrWhiteSpace(raw))
+            return (fallback, $"{DisplayKey(key)} is blank; using \"{fallback}\".");
 
-        if (CsvSettings.NewLine is not ("CRLF" or "LF"))
-        {
-            ConsoleMessages.WriteError("NewLine must be \"CRLF\" or \"LF\".");
-            return false;
-        }
-
+        string resolved;
         try
         {
-            Encoding.GetEncoding(SqlFileEncoding);
+            resolved = Path.GetFullPath(raw, baseDirectory);
         }
         catch (ArgumentException)
         {
-            ConsoleMessages.WriteError(
-                $"SqlFileEncoding \"{SqlFileEncoding}\" is not a valid encoding.");
-            return false;
+            return (fallback, $"{DisplayKey(key)} \"{raw}\" is not a usable folder path; using \"{fallback}\".");
         }
 
-        if (CsvSettings.DateFormat is not null)
-        {
-            try
-            {
-                DateTime.UnixEpoch.ToString(CsvSettings.DateFormat, CultureInfo.InvariantCulture);
-            }
-            catch (FormatException)
-            {
-                ConsoleMessages.WriteError(
-                    $"DateFormat \"{CsvSettings.DateFormat}\" is not valid.");
-                return false;
-            }
-        }
+        if (mustExist && !Directory.Exists(resolved))
+            return (fallback, $"{DisplayKey(key)} \"{resolved}\" does not name an existing folder; using \"{fallback}\".");
 
-        if (!Directory.Exists(QueryFolder))
-        {
-            ConsoleMessages.WriteError($"QueryFolder not found: {QueryFolder}");
-            return false;
-        }
-
-        return true;
+        return (resolved, null);
     }
+
+    private static (int Value, string? Notice) ResolvePositiveNumber(IConfiguration config, string key, int fallback)
+    {
+        var raw = config[key];
+        if (raw is null)
+            return (fallback, null);
+
+        if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) && value > 0)
+            return (value, null);
+
+        return (fallback, $"{DisplayKey(key)} \"{raw}\" is not a whole number greater than 0; using {fallback}.");
+    }
+
+    private static (string Value, string? Notice) ResolveEncodingName(IConfiguration config, string key)
+    {
+        var raw = config[key];
+        if (raw is null)
+            return (DefaultSqlFileEncoding, null);
+
+        try
+        {
+            Encoding.GetEncoding(raw);
+            return (raw, null);
+        }
+        catch (ArgumentException)
+        {
+            return (DefaultSqlFileEncoding,
+                $"{DisplayKey(key)} \"{raw}\" is not an encoding the runtime recognizes; using \"{DefaultSqlFileEncoding}\".");
+        }
+    }
+
+    private static (string Value, string? Notice) ResolveDelimiter(IConfiguration config, string key)
+    {
+        var raw = config[key];
+        if (raw is null)
+            return (CsvSettings.DefaultDelimiter, null);
+
+        if (raw.Length == 1)
+            return (raw, null);
+
+        return (CsvSettings.DefaultDelimiter,
+            $"{DisplayKey(key)} \"{raw}\" is not exactly one character; using \"{CsvSettings.DefaultDelimiter}\".");
+    }
+
+    private static (string Value, string? Notice) ResolveNewLine(IConfiguration config, string key)
+    {
+        var raw = config[key];
+        if (raw is null)
+            return (CsvSettings.DefaultNewLine, null);
+
+        if (raw is "CRLF" or "LF")
+            return (raw, null);
+
+        return (CsvSettings.DefaultNewLine,
+            $"{DisplayKey(key)} \"{raw}\" is not \"CRLF\" or \"LF\"; using \"{CsvSettings.DefaultNewLine}\".");
+    }
+
+    private static (string? Value, string? Notice) ResolveDateFormat(IConfiguration config, string key)
+    {
+        var raw = config[key];
+        if (raw is null)
+            return (null, null);
+
+        try
+        {
+            DateTime.UnixEpoch.ToString(raw, CultureInfo.InvariantCulture);
+            return (raw, null);
+        }
+        catch (FormatException)
+        {
+            return (null,
+                $"{DisplayKey(key)} \"{raw}\" is not a usable date format; dates use the invariant-culture default.");
+        }
+    }
+
+    // Configuration paths are colon-separated; a message names the setting the way
+    // appsettings.json spells it.
+    private static string DisplayKey(string key) => key.Replace(':', '.');
 }
