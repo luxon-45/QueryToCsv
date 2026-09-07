@@ -9,6 +9,30 @@ to build an installer for a version that has no heading here.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-09-07
+
+### Changed
+
+- **Breaking**: standard output now carries only what a run produces — the help text, the
+  version line, and the completion report naming the written file and its row count. The
+  banner, prompts, progress, hints, warnings, and errors moved to standard error, so
+  redirecting standard output yields the result alone. A script that captured progress
+  lines from standard output no longer receives them.
+- **Breaking**: log files are named `QueryToCsv_yyyyMMdd.log`, one per day, replacing
+  `QueryToCsv.log` and its dated archives. Files older than `LogRetentionDays` are now
+  actually deleted on each run — the previous setting had no effect. When `logs/` next to
+  the executable cannot be written to, `QueryToCsv\logs` under the user's local
+  application data takes its place.
+- **Breaking**: configuration no longer stops the run. A missing or unparseable
+  `appsettings.json`, and any value that is blank, unusable, or out of range, falls back
+  to a built-in default; each rejected value is reported once on standard error and
+  written to the log, naming the setting, the value that was rejected, and the default
+  applied. A run that previously ended with exit code 1 for such a value now completes.
+  `Connections` is the one exception — without a usable connection there is no server to
+  query, so that still ends the run with exit code 1. `QueryFolder` and `OutputFolder`
+  now default to `queries` and `output` next to the executable, so neither has to be
+  configured.
+
 ## [2.1.0] - 2026-09-04
 
 ### Added

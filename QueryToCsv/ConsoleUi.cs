@@ -7,15 +7,15 @@ public static class ConsoleUi
 {
     public static int SelectQuery(string[] fileNames)
     {
-        Console.WriteLine("=== Select a query ===");
-        Console.WriteLine("0. Enter query directly");
+        Console.Error.WriteLine("=== Select a query ===");
+        Console.Error.WriteLine("0. Enter query directly");
         for (var i = 0; i < fileNames.Length; i++)
-            Console.WriteLine($"{i + 1}. {fileNames[i]}");
-        Console.WriteLine();
+            Console.Error.WriteLine($"{i + 1}. {fileNames[i]}");
+        Console.Error.WriteLine();
 
         while (true)
         {
-            Console.Write("Enter number: ");
+            Console.Error.Write("Enter number: ");
             var input = Console.ReadLine();
             if (input is null) Environment.Exit(1);
 
@@ -34,11 +34,11 @@ public static class ConsoleUi
 
     public static string InputQuery()
     {
-        Console.WriteLine("Enter SQL query (end with Ctrl+Z):");
+        Console.Error.WriteLine("Enter SQL query (end with Ctrl+Z):");
         var lines = new List<string>();
         while (true)
         {
-            Console.Write("  > ");
+            Console.Error.Write("  > ");
             var line = Console.ReadLine();
             if (line is null) break;
             lines.Add(line);
@@ -56,7 +56,7 @@ public static class ConsoleUi
     {
         while (true)
         {
-            Console.Write("Include header row? (y/n): ");
+            Console.Error.Write("Include header row? (y/n): ");
             var input = Console.ReadLine();
             if (input is null) Environment.Exit(1);
 
@@ -69,16 +69,16 @@ public static class ConsoleUi
 
     public static Encoding SelectEncoding()
     {
-        Console.WriteLine("=== Select encoding ===");
-        Console.WriteLine("1. UTF-8");
-        Console.WriteLine("2. UTF-8 with BOM");
-        Console.WriteLine("3. UTF-16 LE");
-        Console.WriteLine("4. Shift-JIS");
-        Console.WriteLine();
+        Console.Error.WriteLine("=== Select encoding ===");
+        Console.Error.WriteLine("1. UTF-8");
+        Console.Error.WriteLine("2. UTF-8 with BOM");
+        Console.Error.WriteLine("3. UTF-16 LE");
+        Console.Error.WriteLine("4. Shift-JIS");
+        Console.Error.WriteLine();
 
         while (true)
         {
-            Console.Write("Enter number: ");
+            Console.Error.Write("Enter number: ");
             var input = Console.ReadLine();
             if (input is null) Environment.Exit(1);
 
@@ -115,17 +115,17 @@ public static class ConsoleUi
         if (connections.Count == 1)
             return 0;
 
-        Console.WriteLine("=== Select connection ===");
+        Console.Error.WriteLine("=== Select connection ===");
         for (var i = 0; i < connections.Count; i++)
         {
             var info = FormatConnectionInfo(connections[i].ConnectionString);
-            Console.WriteLine($"{i + 1}. {connections[i].Name} ({info})");
+            Console.Error.WriteLine($"{i + 1}. {connections[i].Name} ({info})");
         }
-        Console.WriteLine();
+        Console.Error.WriteLine();
 
         while (true)
         {
-            Console.Write("Enter number: ");
+            Console.Error.Write("Enter number: ");
             var input = Console.ReadLine();
             if (input is null) Environment.Exit(1);
 

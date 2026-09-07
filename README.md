@@ -223,8 +223,8 @@ All settings are in `appsettings.json`.
 | `Connections[]` | array | Yes | - | Array of named connection entries |
 | `Connections[].Name` | string | Yes | - | Display name shown in the selection menu |
 | `Connections[].ConnectionString` | string | Yes | - | SQL Server connection string |
-| `QueryFolder` | string | Yes | - | Folder containing `.sql` files |
-| `OutputFolder` | string | Yes | - | Folder for CSV output |
+| `QueryFolder` | string | No | `queries` next to the executable | Folder containing `.sql` files |
+| `OutputFolder` | string | No | `output` next to the executable | Folder for CSV output |
 | `QueryTimeout` | int | No | `30` | Query timeout in seconds (must be > 0) |
 | `SqlFileEncoding` | string | No | `"UTF-8"` | Encoding for reading `.sql` files |
 | `LogRetentionDays` | int | No | `30` | Number of days to keep log files |
@@ -236,6 +236,15 @@ All settings are in `appsettings.json`.
 ### Path Resolution
 
 Relative paths in `QueryFolder` and `OutputFolder` are resolved relative to the executable's directory.
+
+### Unusable Values
+
+`Connections` is the only required setting: without one, QueryToCsv has no server to
+query and stops. Every other setting has a built-in default and falls back to it when
+the file is missing, its JSON cannot be parsed, or the value is unusable. Each rejected
+value is reported once on standard error and written to the log, naming the setting, the
+value that was rejected, and the default applied — the run then continues on that
+default.
 
 ### Full Example
 
@@ -300,10 +309,11 @@ If a file with the same name already exists, a suffix is appended: `_2`, `_3`, e
 
 | Scenario | Behavior |
 |----------|----------|
-| `appsettings.json` missing | `QueryToCsv: appsettings.json not found.`, exit code 1 |
-| Invalid JSON in config | `QueryToCsv: failed to load appsettings.json.`, exit code 1 |
-| Invalid config values | `QueryToCsv: <detail>`, exit code 1 |
-| `QueryFolder` does not exist | `QueryToCsv: QueryFolder not found: <path>`, exit code 1 |
+| `appsettings.json` missing or unparseable | Reported as a warning; the run continues on the built-in defaults |
+| Unusable config value | Reported as a warning naming the setting and the default applied; the run continues |
+| No connection configured | `QueryToCsv: Connections must contain at least one entry.`, exit code 1 |
+| Connection entry left incomplete | `QueryToCsv: Connections[<index>].Name is required.` (or `.ConnectionString`), exit code 1 |
+| `QueryFolder` does not exist | Reported as a warning; `queries` next to the executable is used |
 | No `.sql` files found | Only "Enter query directly" (option 0) is shown; direct input is still available |
 | `OutputFolder` does not exist | Automatically created |
 | Connection or SQL execution failure | `QueryToCsv: query execution failed.`, exit code 1 |

@@ -64,24 +64,35 @@ representative examples.
 ### QueryToCsv-002: Configuration loading
 
 Configuration is read from `appsettings.json` in the executable's directory. Relative
-`QueryFolder` and `OutputFolder` values resolve against that same directory. A missing
-file, unparseable JSON, or a value that fails validation (QueryToCsv-003) ends the run
-with exit code 1.
+`QueryFolder` and `OutputFolder` values resolve against that same directory.
 
-### QueryToCsv-003: Configuration validation
+Every setting has a built-in default, and the run continues on that default whenever the
+file is missing, its JSON cannot be parsed, or a value is absent, unusable, or out of
+range. A value that is present but unusable is reported once, naming the setting, the
+value that was rejected, and the default applied; an absent setting rejects nothing and
+is not reported. Replacement happens while the configuration is read, so no later step
+sees a rejected value. Configuration alone therefore never ends the run — only the
+absence of a usable connection does (QueryToCsv-003).
 
-| Key | Requirement |
-|---|---|
-| `Connections` | At least one entry; every entry has a non-blank `Name` and `ConnectionString` |
-| `QueryFolder` | Non-blank, and the folder exists |
-| `OutputFolder` | Non-blank; the folder is created on demand and need not exist yet |
-| `QueryTimeout` | Greater than 0 |
-| `SqlFileEncoding` | An encoding name the runtime recognizes |
-| `CsvSettings.Delimiter` | Exactly one character |
-| `CsvSettings.NewLine` | `CRLF` or `LF`, case-sensitive |
-| `CsvSettings.DateFormat` | Absent, or a usable date format string |
+### QueryToCsv-003: Required input and configuration defaults
 
-Each failure reports which setting is wrong and why, then exits 1.
+`Connections` is the one setting with no usable default: no built-in value can name the
+server an operator means to query. A configuration with no entry, or with an entry whose
+`Name` or `ConnectionString` is blank, reports which entry is wrong and exits 1.
+
+Every other setting falls back to its built-in default when its value is unusable:
+
+| Key | Built-in default | Value rejected when |
+|---|---|---|
+| `QueryFolder` | `queries` next to the executable | Blank, not a usable folder path, or naming a folder that does not exist |
+| `OutputFolder` | `output` next to the executable | Blank, or not a usable folder path |
+| `QueryTimeout` | `30` | Not a whole number greater than 0 |
+| `SqlFileEncoding` | `UTF-8` | Not an encoding name the runtime recognizes |
+| `LogRetentionDays` | `30` | Not a whole number greater than 0 |
+| `CsvSettings.Delimiter` | `,` | Not exactly one character |
+| `CsvSettings.NullValue` | An empty field | Never — every string is usable |
+| `CsvSettings.NewLine` | `CRLF` | Not `CRLF` or `LF`, which are case-sensitive |
+| `CsvSettings.DateFormat` | Absent, so dates use the invariant-culture default | Not a usable date format string |
 
 ### QueryToCsv-004: Interactive run
 
@@ -89,7 +100,8 @@ Each failure reports which setting is wrong and why, then exits 1.
    the user picks by number from a list showing each name with its server and database.
 2. **Query** — the `.sql` files in `QueryFolder` are listed in ascending file-name order
    (case-insensitive), numbered from 1, preceded by option `0` for direct entry. With no
-   `.sql` files present, only option `0` is offered.
+   `.sql` files present — `QueryFolder` empty, or not there at all — only option `0` is
+   offered.
 3. **Direct entry** (option `0`) — SQL is typed line by line and ended with Ctrl+Z.
    Entering nothing is an error (exit 1).
 4. **Header** — the user answers `y` or `n` (case-insensitive).
@@ -177,11 +189,16 @@ file is never overwritten.
 
 ### QueryToCsv-011: Logging
 
-Each run appends to a log file in `logs/` next to the executable, rotated daily and kept
-for `LogRetentionDays` days. Log entries are in English and record the run's start and
-end with its exit code, the selected connection, query, header choice and encoding, the
-written file and its row count, and any failure. Log entries never contain the
-connection string.
+Each run appends to `QueryToCsv_yyyyMMdd.log` in `logs/` next to the executable — one
+file per day, keeping the most recent `LogRetentionDays` days and deleting this
+application's older log files. When that folder cannot be written to, `logs/` under
+`QueryToCsv` in the user's local application data takes its place; logging never ends a
+run either way.
+
+Log entries are in English and record the run's start and end with its exit code, every
+rejected configuration value (QueryToCsv-002), the selected connection, query, header
+choice and encoding, the written file and its row count, and any failure. Log entries
+never contain the connection string.
 
 ## Inputs and Outputs
 
@@ -192,8 +209,9 @@ connection string.
 | Input | Command-line options (QueryToCsv-005) and interactive answers (QueryToCsv-004) |
 | Input | The result set returned by SQL Server |
 | Output | One CSV file in `OutputFolder` per successful run |
-| Output | Progress and result messages on standard output, errors on standard error |
-| Output | Log entries under `logs/` |
+| Output | The help text, the version line, and the completion report naming the written file and its row count, on standard output |
+| Output | The banner, prompts, progress, hints, warnings, and errors, on standard error |
+| Output | Log entries under `logs/` (QueryToCsv-011) |
 | Output | Exit code 0 (success), 1 (runtime error), or 2 (usage error) |
 
 ## Error Behavior
@@ -205,10 +223,8 @@ is left behind.
 
 | Scenario | Message |
 |---|---|
-| `appsettings.json` missing | `QueryToCsv: appsettings.json not found.` |
-| Configuration unparseable | `QueryToCsv: failed to load appsettings.json.` |
-| Invalid configuration value | `QueryToCsv: ` plus the setting and the reason |
-| `QueryFolder` does not exist | `QueryToCsv: QueryFolder not found: <path>` |
+| No connection configured | `QueryToCsv: Connections must contain at least one entry.` |
+| A connection entry left incomplete | `QueryToCsv: Connections[<index>].Name is required.` / `QueryToCsv: Connections[<index>].ConnectionString is required.` |
 | Non-SELECT statement | `QueryToCsv: only SELECT statements are allowed.` |
 | Connection or execution failure | `QueryToCsv: query execution failed.` |
 | Query timeout | `QueryToCsv: query timed out.` |
@@ -226,6 +242,25 @@ is left behind.
 | Requested `--open` target does not exist | `QueryToCsv: file not found: <path>` / `QueryToCsv: folder not found: <path>`; for `output`, a note that running a query creates it |
 
 A query returning zero rows is not an error: the file is written and the run exits 0.
+
+## Warning Behavior
+
+A rejected configuration value never ends the run (QueryToCsv-002). Each one is reported
+once on standard error in the same `QueryToCsv: ` form and written to the log, and the
+run continues on the default:
+
+| Scenario | Message |
+|---|---|
+| `appsettings.json` missing | `QueryToCsv: appsettings.json not found; continuing with built-in defaults.` |
+| Configuration unparseable | `QueryToCsv: failed to load appsettings.json; continuing with built-in defaults.` |
+| `QueryFolder` or `OutputFolder` blank | `QueryToCsv: <key> is blank; using "<default>".` |
+| `QueryFolder` or `OutputFolder` not a usable path | `QueryToCsv: <key> "<value>" is not a usable folder path; using "<default>".` |
+| `QueryFolder` naming a folder that is not there | `QueryToCsv: QueryFolder "<path>" does not name an existing folder; using "<default>".` |
+| `QueryTimeout` or `LogRetentionDays` out of range | `QueryToCsv: <key> "<value>" is not a whole number greater than 0; using <default>.` |
+| `SqlFileEncoding` unknown | `QueryToCsv: SqlFileEncoding "<value>" is not an encoding the runtime recognizes; using "UTF-8".` |
+| `CsvSettings.Delimiter` not one character | `QueryToCsv: CsvSettings.Delimiter "<value>" is not exactly one character; using ",".` |
+| `CsvSettings.NewLine` outside its vocabulary | `QueryToCsv: CsvSettings.NewLine "<value>" is not "CRLF" or "LF"; using "CRLF".` |
+| `CsvSettings.DateFormat` unusable | `QueryToCsv: CsvSettings.DateFormat "<value>" is not a usable date format; dates use the invariant-culture default.` |
 
 ## Invariants
 
@@ -269,12 +304,15 @@ A query returning zero rows is not an error: the file is written and the run exi
 | Requirement | Tests |
 |---|---|
 | QueryToCsv-001 (mode selection and version text) | `CliInvocationTests`, `ApplicationVersionTests` |
+| QueryToCsv-002 (defaults, rejected values, and their messages) | `AppSettingsTests` |
 | QueryToCsv-003 | `AppSettingsTests` |
 | QueryToCsv-005 | `CliRunArgsTests` |
 | QueryToCsv-007 | `QueryExecutorTests.IsSelectOnly_Statement_MatchesExpectation` |
 | QueryToCsv-009 | `QueryExecutorTests.BuildOutputPath_*` |
 | QueryToCsv-010 (encoding selection) | `ConsoleUiTests` |
 
-QueryToCsv-001 behavior after mode selection, -002, -004, -006, -008, -011 and the CSV
-writing side of -010 are not yet covered by tests; this document is their source of
-truth until they are.
+| QueryToCsv-011 (log directory fallback) | `LogSetupTests` |
+
+QueryToCsv-001 behavior after mode selection, -004, -006, -008, the log content side of
+-011, and the CSV writing side of -010 are not yet covered by tests; this document is
+their source of truth until they are.

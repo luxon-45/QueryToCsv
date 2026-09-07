@@ -18,6 +18,19 @@ text here. On conflict, this file wins.
 - Keep rules concise and declarative. Do NOT include concrete code examples unless
   absolutely necessary — reference the relevant source file/method instead
 
+## Required Input
+
+Overrides Configuration Values in `standard.md`, which has every configurable value fall
+back to a built-in default.
+
+- **`Connections` is required input, not a defaulted value.** No built-in value can name
+  the server an operator means to query, so a configuration with no entry — or with an
+  entry whose `Name` or `ConnectionString` is blank — ends the run with exit code 1.
+  Every other setting follows the shared rule and falls back to its default
+- **An absent setting is not a rejected value.** The shared rule's report names what was
+  rejected, so only a value that is present and unusable is reported; a key the operator
+  left out takes its default silently
+
 ## Application Rules
 
 - **Only SELECT statements may reach the server.** `QueryExecutor.IsSelectOnly` strips

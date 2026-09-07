@@ -37,28 +37,31 @@ public static partial class QueryExecutor
         {
             using var connection = new SqlConnection(connectionString);
             Logger.Info("Connecting to SQL Server...");
-            Console.WriteLine("Connecting...");
+            Console.Error.WriteLine("Connecting...");
             connection.Open();
 
             using var command = new SqlCommand(sql, connection);
             command.CommandTimeout = settings.QueryTimeout;
 
             Logger.Info($"Executing: {label}");
-            Console.WriteLine("Executing query...");
+            Console.Error.WriteLine("Executing query...");
             using var reader = command.ExecuteReader();
 
-            Console.WriteLine("Writing CSV...");
+            Console.Error.WriteLine("Writing CSV...");
             var rowCount = WriteCsv(reader, tempPath, csvEncoding, includeHeader, settings.CsvSettings);
 
             File.Move(tempPath, outputPath);
 
             Logger.Info($"CSV written: {outputPath} ({rowCount} rows)");
-            Console.WriteLine();
+
+            // The written file and its row count are what the run produces; the hints
+            // below are not (docs/rules/cli.md, STREAMS).
+            Console.Error.WriteLine();
             Console.WriteLine($"Done: {outputPath}");
             Console.WriteLine($"Rows: {rowCount.ToString("N0", CultureInfo.InvariantCulture)}");
-            Console.WriteLine();
-            Console.WriteLine($"QueryToCsv --open output");
-            Console.WriteLine($"QueryToCsv --open \"{outputPath}\"");
+            Console.Error.WriteLine();
+            Console.Error.WriteLine($"{ApplicationVersion.ApplicationName} --open output");
+            Console.Error.WriteLine($"{ApplicationVersion.ApplicationName} --open \"{outputPath}\"");
             return 0;
         }
         catch (SqlException ex) when (ex.Number == -2)
